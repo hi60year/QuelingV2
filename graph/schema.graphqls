@@ -1,0 +1,156 @@
+# GraphQL schema example
+#
+# https://gqlgen.com/getting-started/
+scalar JSON
+
+type Player {
+  id: ID
+  name: String!
+  platformInfos: [PlatformInfo!]!
+  extraInfo: JSON
+  professionalCert: String
+  isLeader(teamId: String!): Boolean!
+  teamId: String
+  contestId: String
+  team: Team
+  contest: Contest
+}
+
+enum MahjongType {
+  COM,
+  Riichi
+}
+
+enum Platform {
+  Mahjongsoul,
+  Tenhou,
+  Tziakcha
+}
+
+type PlatformInfo {
+  platform: Platform!
+  name: String!
+  uid: String
+  rankingInfo: RankingInfo
+}
+
+union RankingInfo = MahjongSoulRankingInfo | TenhouRankingInfo
+
+type MahjongSoulRankingInfo {
+  ranking3: Int
+  ranking4: Int
+}
+
+type TenhouRankingInfo {
+  ranking3: Int
+  ranking4: Int
+}
+
+type Team {
+  id: ID!
+  players: [Player!]!
+  name: String!
+  hasLeader: Boolean!
+  leaderIndex: Int
+  leaderPlayer: Player
+  status: TeamStatus
+  contestId: String!
+  extraInfo: JSON
+}
+
+enum TeamStatus {
+  Editing,
+  Accepted,
+  Rejected,
+  Pending
+}
+
+type Contest {
+  id: ID!
+  name: String!
+  teams: [Team!]!
+  players: [Player!]!
+  # specifies whether the player attend by individual or by team
+  isIndividual: Boolean!
+  status: ContestStatus!
+  mahjongType: MahjongType!
+  maxTeamMember: Int!
+  minTeamMember: Int!
+  inviteCode(authorizationCode: String!): String!
+}
+
+enum ContestStatus {
+  Registering,
+  Holding,
+  End
+}
+
+type Query {
+  playerById(id: ID!): Player
+  playersByName(name: String!): [Player!]!
+  contestById(id: ID!): Contest
+  contestsByName(name: String!): [Contest!]!
+
+  allContests(pageNum: Int!): [Contest!]!
+  allContestsByRule(rule: MahjongType, pageNum: Int!): [Contest!]!
+  allPlayers(pageNum: Int!): [Player!]!
+}
+
+input PlatformInfoPayload {
+  name: String!
+  uid: String
+  ranking3: Int
+  ranking4: Int
+  pt3: Int
+  pt4: Int
+  r3: Int
+  r4: Int
+  rankingInfoType: String!
+}
+
+scalar Upload
+
+input PlayerPayload {
+  name: String!
+  platformInfos: [PlatformInfoPayload!]!
+  appendix: Upload
+  isLeader: Boolean
+  teamId: String
+  contestId: String!
+  extraInfo: JSON
+}
+
+input TeamRegistrationPayload {
+  name: String!
+  players: [PlayerPayload!]!
+  leaderIndex: Int
+  contestId: String!
+  extraInfo: JSON
+}
+
+type TeamNameAlreadyExistError {
+  name: String!
+  msg: String!
+}
+
+type InviteCodeNotMatchError {
+  msg: String!
+}
+
+type MaxTeamMemberExceededError {
+  maxTeamMember: Int!
+  msg: String!
+}
+
+union TeamRegistrationError = TeamNameAlreadyExistError | InviteCodeNotMatchError | MaxTeamMemberExceededError
+
+type TeamRegistrationResult {
+  teamId: String
+  authorizationCode: String
+  error: TeamRegistrationError
+}
+
+type Mutation {
+  registerNewTeam(registrationPayload: TeamRegistrationPayload, inviteCode: String): TeamRegistrationResult!
+}
+
