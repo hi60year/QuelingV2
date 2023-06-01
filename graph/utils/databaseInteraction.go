@@ -14,6 +14,7 @@ func GetAllWithPagination[T any](dbClient *mongo.Client, ctx context.Context, co
 	const pageSize = 20
 
 	findOptions := options.Find()
+	findOptions.SetSort(bson.D{{"createdAt", -1}})
 	findOptions.SetSkip(int64(pageNum * pageSize))
 	findOptions.SetLimit(int64(pageSize))
 

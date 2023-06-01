@@ -2,6 +2,7 @@
 #
 # https://gqlgen.com/getting-started/
 scalar JSON
+scalar Time
 
 type Player {
   id: ID
@@ -77,6 +78,12 @@ type Contest {
   maxTeamMember: Int!
   minTeamMember: Int!
   inviteCode(authorizationCode: String!): String!
+  checkInviteCode(inviteCode: String!): Boolean!
+  checkTeamNameExist(name: String!): Boolean!
+  attendNum: Int!
+  homePage: String
+  platformEngine: JSON
+  createdAt: Time!
 }
 
 enum ContestStatus {
@@ -90,6 +97,9 @@ type Query {
   playersByName(name: String!): [Player!]!
   contestById(id: ID!): Contest
   contestsByName(name: String!): [Contest!]!
+  contestNum: Int!
+  comContestNum: Int!
+  riichiContestNum: Int!
 
   allContests(pageNum: Int!): [Contest!]!
   allContestsByRule(rule: MahjongType, pageNum: Int!): [Contest!]!
@@ -114,9 +124,6 @@ input PlayerPayload {
   name: String!
   platformInfos: [PlatformInfoPayload!]!
   appendix: Upload
-  isLeader: Boolean
-  teamId: String
-  contestId: String!
   extraInfo: JSON
 }
 

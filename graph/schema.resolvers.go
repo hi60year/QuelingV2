@@ -61,8 +61,80 @@ func (r *contestResolver) InviteCode(ctx context.Context, obj *model.Contest, au
 	}
 }
 
+// CheckInviteCode is the resolver for the checkInviteCode field.
+func (r *contestResolver) CheckInviteCode(ctx context.Context, obj *model.Contest, inviteCode string) (bool, error) {
+	collection := r.db.Database(constants.QuelingDatabaseName).Collection(constants.ContestCollectionName)
+	id, _ := primitive.ObjectIDFromHex(obj.ID)
+
+	option := options.FindOne().SetProjection(bson.D{{
+		"inviteCode", 1,
+	}})
+
+	result := collection.FindOne(ctx, bson.D{{"_id", id}}, option)
+
+	var inviteCodeResponse struct {
+		InviteCode string `json:"inviteCode"`
+	}
+
+	if err := result.Decode(&inviteCodeResponse); err != nil {
+		return false, err
+	} else {
+		return inviteCodeResponse.InviteCode == inviteCode, nil
+	}
+}
+
+// CheckTeamNameExist is the resolver for the checkTeamNameExist field.
+func (r *contestResolver) CheckTeamNameExist(ctx context.Context, obj *model.Contest, name string) (bool, error) {
+	id, _ := primitive.ObjectIDFromHex(obj.ID)
+	_, err := utils.GetOne[model.Team](r.db, ctx, constants.TeamCollectionName, bson.D{
+		{"contestId", id},
+		{"name", name},
+	})
+
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return false, nil
+	} else {
+		return true, err
+	}
+}
+
+// AttendNum is the resolver for the attendNum field.
+func (r *contestResolver) AttendNum(ctx context.Context, obj *model.Contest) (int, error) {
+	collection := r.db.Database(constants.QuelingDatabaseName).Collection(constants.ContestCollectionName)
+	id, _ := primitive.ObjectIDFromHex(obj.ID)
+	pipeline := mongo.Pipeline{
+		{{"$match", bson.D{{"_id", id}}}},
+		{{"$project", bson.D{{"attendNum", bson.D{{"$size", "$teams"}}}}}},
+	}
+
+	var result struct {
+		AttendNum int `json:"attendNum"`
+	}
+
+	cur, err := collection.Aggregate(ctx, pipeline)
+
+	if err != nil {
+		return 0, err
+	}
+
+	defer func() {
+		err := cur.Close(ctx)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	err = cur.Decode(&result)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result.AttendNum, err
+}
+
 // RegisterNewTeam is the resolver for the registerNewTeam field.
-func (r *mutationResolver) RegisterNewTeam(ctx context.Context, registrationPayload *model.TeamRegistrationPayload, inviteCode *string) (*model.TeamRegistrationResult, error) {
+func (r *mutationResolver) RegisterNewTeam(ctx context.Context, registrationPayload *model.TeamRegistrationPayload, inviteCode *string) (registrationResult *model.TeamRegistrationResult, err error) {
 	session, err := r.db.StartSession()
 	if err != nil {
 		return nil, err
@@ -179,6 +251,19 @@ func (r *mutationResolver) RegisterNewTeam(ctx context.Context, registrationPayl
 		log.Fatal("Unknown InsertedID type")
 	}
 
+	filter := bson.M{"_id": contestId}
+	update := bson.M{
+		"$push": bson.M{
+			"teams": result.InsertedID,
+		},
+	}
+
+	_, err = r.db.Database(constants.QuelingDatabaseName).Collection(constants.ContestCollectionName).UpdateOne(ctx, filter, update)
+
+	if err != nil {
+		return nil, err
+	}
+
 	err = nil
 
 	return &model.TeamRegistrationResult{
@@ -245,6 +330,33 @@ func (r *queryResolver) ContestsByName(ctx context.Context, name string) ([]*mod
 		},
 	}
 	return utils.GetAllWithPagination[model.Contest](r.db, ctx, constants.ContestCollectionName, filter, 0)
+}
+
+// ContestNum is the resolver for the contestNum field.
+func (r *queryResolver) ContestNum(ctx context.Context) (int, error) {
+	count, err := r.db.Database(constants.QuelingDatabaseName).Collection(constants.ContestCollectionName).CountDocuments(ctx, bson.D{})
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+// ComContestNum is the resolver for the comContestNum field.
+func (r *queryResolver) ComContestNum(ctx context.Context) (int, error) {
+	count, err := r.db.Database(constants.QuelingDatabaseName).Collection(constants.ContestCollectionName).CountDocuments(ctx, bson.D{{"mahjongType", "COM"}})
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+// RiichiContestNum is the resolver for the riichiContestNum field.
+func (r *queryResolver) RiichiContestNum(ctx context.Context) (int, error) {
+	count, err := r.db.Database(constants.QuelingDatabaseName).Collection(constants.ContestCollectionName).CountDocuments(ctx, bson.D{{"mahjongType", "Riichi"}})
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
 
 // AllContests is the resolver for the allContests field.

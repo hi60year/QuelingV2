@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 	"log"
@@ -33,6 +34,11 @@ func main() {
 	}
 
 	router := gin.Default()
+
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true
+
+	router.Use(cors.New(corsConfig))
 
 	var client *mongo.Client
 
