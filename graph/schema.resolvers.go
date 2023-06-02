@@ -22,8 +22,9 @@ import (
 )
 
 // Teams is the resolver for the teams field.
-func (r *contestResolver) Teams(ctx context.Context, obj *model.Contest) ([]*model.Team, error) {
-	panic(fmt.Errorf("not implemented: Teams - teams"))
+func (r *contestResolver) Teams(ctx context.Context, obj *model.Contest, pageNum int) ([]*model.Team, error) {
+	id, _ := primitive.ObjectIDFromHex(obj.ID)
+	return utils.GetAllWithPagination[model.Team](r.db, ctx, constants.TeamCollectionName, bson.D{{"contestId", id}}, pageNum)
 }
 
 // Players is the resolver for the players field.

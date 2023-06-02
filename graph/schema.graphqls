@@ -69,7 +69,7 @@ enum TeamStatus {
 type Contest {
   id: ID!
   name: String!
-  teams: [Team!]!
+  teams(pageNum: Int!): [Team!]!
   players: [Player!]!
   # specifies whether the player attend by individual or by team
   isIndividual: Boolean!
