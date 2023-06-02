@@ -12,9 +12,10 @@ import (
 	"os"
 )
 
-const defaultPort = "8080"
-
 func main() {
+
+	gin.SetMode(gin.ReleaseMode)
+
 	confFile, err := os.Open("conf.json")
 	if err != nil {
 		panic(err)
