@@ -125,10 +125,13 @@ func (r *contestResolver) AttendNum(ctx context.Context, obj *model.Contest) (in
 		}
 	}()
 
-	err = cur.Decode(&result)
-
-	if err != nil {
-		return 0, err
+	if cur.Next(ctx) {
+		err := cur.Decode(&result)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		return 0, errors.New("no match found")
 	}
 
 	return result.AttendNum, err
