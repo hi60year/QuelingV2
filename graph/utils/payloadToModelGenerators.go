@@ -56,7 +56,7 @@ func PlayerFromPayload(payload *model.PlayerPayload, contestId string) (player *
 
 	player = &model.Player{
 		Name:             payload.Name,
-		PlatformInfos:    nil,
+		PlatformInfos:    platformInfos,
 		ExtraInfo:        extraInfo,
 		ProfessionalCert: nil,
 		ContestId:        &contestId,
