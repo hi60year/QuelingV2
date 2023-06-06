@@ -101,11 +101,11 @@ func (r *contestResolver) CheckTeamNameExist(ctx context.Context, obj *model.Con
 
 // AttendNum is the resolver for the attendNum field.
 func (r *contestResolver) AttendNum(ctx context.Context, obj *model.Contest) (int, error) {
-	collection := r.db.Database(constants.QuelingDatabaseName).Collection(constants.ContestCollectionName)
+	collection := r.db.Database(constants.QuelingDatabaseName).Collection(constants.TeamCollectionName)
 	id, _ := primitive.ObjectIDFromHex(obj.ID)
 	pipeline := mongo.Pipeline{
-		{{"$match", bson.D{{"_id", id}}}},
-		{{"$project", bson.D{{"attendNum", bson.D{{"$size", "$teams"}}}}}},
+		{{"$match", bson.D{{"contestId", id}}}},
+		{{"$count", "attendNum"}},
 	}
 
 	var result struct {
@@ -229,6 +229,7 @@ func (r *mutationResolver) RegisterNewTeam(ctx context.Context, registrationPayl
 		LeaderIndex: registrationPayload.LeaderIndex,
 		ContestId:   registrationPayload.ContestID,
 		ExtraInfo:   registrationPayload.ExtraInfo,
+		Status:      model.TeamStatusEditing,
 	}
 
 	authorizationCode := uuid.UUIDv4()
@@ -255,15 +256,6 @@ func (r *mutationResolver) RegisterNewTeam(ctx context.Context, registrationPayl
 		log.Fatal("Unknown InsertedID type")
 	}
 
-	filter := bson.M{"_id": contestId}
-	update := bson.M{
-		"$push": bson.M{
-			"teams": result.InsertedID,
-		},
-	}
-
-	_, err = r.db.Database(constants.QuelingDatabaseName).Collection(constants.ContestCollectionName).UpdateOne(ctx, filter, update)
-
 	if err != nil {
 		return nil, err
 	}
@@ -275,6 +267,64 @@ func (r *mutationResolver) RegisterNewTeam(ctx context.Context, registrationPayl
 		AuthorizationCode: &authorizationCode,
 		Error:             nil,
 	}, nil
+}
+
+// UpdateTeam is the resolver for the updateTeam field.
+func (r *mutationResolver) UpdateTeam(ctx context.Context, teamID string, updatePayload *model.TeamUploadPayload) (bool, error) {
+	id, err := primitive.ObjectIDFromHex(teamID)
+	if err != nil {
+		return false, err
+	}
+
+	findOptions := options.FindOne().SetProjection(bson.M{"authorizationCode": 1})
+
+	result := r.db.Database(constants.QuelingDatabaseName).Collection(constants.TeamCollectionName).FindOne(ctx, bson.D{{"_id", id}}, findOptions)
+
+	var AuthorizationCodeWrapper struct {
+		AuthorizationCode string `json:"authorizationCode"`
+	}
+
+	err = result.Decode(&AuthorizationCodeWrapper)
+
+	if err != nil {
+		return false, err
+	}
+
+	if AuthorizationCodeWrapper.AuthorizationCode != updatePayload.AuthorizationCode || AuthorizationCodeWrapper.AuthorizationCode == "" {
+		return false, errors.New("authorization failed")
+	}
+
+	updatePayloadJsonData, err := json.Marshal(updatePayload)
+
+	if err != nil {
+		return false, err
+	}
+
+	updatePayloadJson := make(map[string]any)
+
+	err = json.Unmarshal(updatePayloadJsonData, &updatePayloadJson)
+
+	if err != nil {
+		return false, err
+	}
+
+	updatePayloadJson["authorizationCode"] = nil
+
+	update := bson.D{}
+
+	for k, v := range updatePayloadJson {
+		if v != nil {
+			update = append(update, bson.E{Key: k, Value: v})
+		}
+	}
+
+	_, err = r.db.Database(constants.QuelingDatabaseName).Collection(constants.TeamCollectionName).UpdateByID(ctx, id, bson.D{{"$set", update}})
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // IsLeader is the resolver for the isLeader field.
@@ -363,6 +413,38 @@ func (r *queryResolver) RiichiContestNum(ctx context.Context) (int, error) {
 	return int(count), nil
 }
 
+// Teams is the resolver for the teams field.
+func (r *queryResolver) Teams(ctx context.Context, id *string, contestID *string, name *string, pageNum int) ([]*model.Team, error) {
+	filter := bson.D{}
+
+	if id != nil {
+		teamObjectId, err := primitive.ObjectIDFromHex(*id)
+		if err != nil {
+			return nil, err
+		}
+		filter = append(filter, bson.E{Key: "_id", Value: teamObjectId})
+	}
+	if contestID != nil {
+		contestObjectId, err := primitive.ObjectIDFromHex(*contestID)
+		if err != nil {
+			return nil, err
+		}
+		filter = append(filter, bson.E{Key: "contestId", Value: contestObjectId})
+	}
+	if name != nil {
+		filter = append(filter, bson.E{Key: "name", Value: bson.M{
+			"$regex":   "^" + *name,
+			"$options": "i", // Case-insensitive search
+		}})
+	}
+	return utils.GetAllWithPagination[model.Team](r.db, ctx, constants.TeamCollectionName, filter, pageNum)
+}
+
+// TeamByID is the resolver for the teamById field.
+func (r *queryResolver) TeamByID(ctx context.Context, id string) (*model.Team, error) {
+	return utils.GetOneById[model.Team](r.db, ctx, constants.TeamCollectionName, id)
+}
+
 // AllContests is the resolver for the allContests field.
 func (r *queryResolver) AllContests(ctx context.Context, pageNum int) ([]*model.Contest, error) {
 	return utils.GetAllWithPagination[model.Contest](r.db, ctx, constants.ContestCollectionName, bson.D{}, pageNum)
@@ -388,17 +470,43 @@ func (r *teamResolver) LeaderPlayer(ctx context.Context, obj *model.Team) (*mode
 	if obj.LeaderIndex == nil {
 		return nil, fmt.Errorf("no leader specified")
 	} else {
-		if *obj.LeaderIndex < 0 || *obj.LeaderIndex >= len(obj.Players) {
-			return nil, fmt.Errorf("invalid leader index value. expect a value in [0, %v], got %v",
-				len(obj.Players), obj.LeaderIndex)
+		if *(obj.LeaderIndex) < 0 || *(obj.LeaderIndex) >= len(obj.Players) {
+			return nil, fmt.Errorf("invalid leader index value. expect a value in [0, %v], got %v. team: %v",
+				len(obj.Players), *obj.LeaderIndex, obj.Name)
 		}
 	}
 	return obj.Players[*obj.LeaderIndex], nil
 }
 
-// Status is the resolver for the status field.
-func (r *teamResolver) Status(ctx context.Context, obj *model.Team) (*model.TeamStatus, error) {
-	panic(fmt.Errorf("not implemented: Status - status"))
+// Contest is the resolver for the contest field.
+func (r *teamResolver) Contest(ctx context.Context, obj *model.Team) (*model.Contest, error) {
+	if obj.ContestId == "" {
+		return nil, errors.New("contestId must be fetched")
+	} else {
+		return utils.GetOneById[model.Contest](r.db, ctx, constants.ContestCollectionName, obj.ContestId)
+	}
+}
+
+// CheckAuthorizationCode is the resolver for the checkAuthorizationCode field.
+func (r *teamResolver) CheckAuthorizationCode(ctx context.Context, obj *model.Team, authorizationCode string) (bool, error) {
+	collection := r.db.Database(constants.QuelingDatabaseName).Collection(constants.TeamCollectionName)
+	id, _ := primitive.ObjectIDFromHex(obj.ID)
+
+	option := options.FindOne().SetProjection(bson.D{{
+		"authorizationCode", 1,
+	}})
+
+	result := collection.FindOne(ctx, bson.D{{"_id", id}}, option)
+
+	var authorizationCodeResponse struct {
+		AuthorizationCode string `json:"authorizationCode"`
+	}
+
+	if err := result.Decode(&authorizationCodeResponse); err != nil {
+		return false, err
+	} else {
+		return authorizationCodeResponse.AuthorizationCode == authorizationCode, nil
+	}
 }
 
 // Contest returns ContestResolver implementation.

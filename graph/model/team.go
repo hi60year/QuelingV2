@@ -7,4 +7,6 @@ type Team struct {
 	LeaderIndex *int           `json:"leaderIndex,omitempty"`
 	ContestId   string         `json:"contestId"`
 	ExtraInfo   map[string]any `json:"extraInfo,omitempty"`
+	Status      TeamStatus     `json:"status"`
+	PlayerOrder []int          `json:"playerOrder"`
 }

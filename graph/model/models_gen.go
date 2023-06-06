@@ -85,6 +85,13 @@ type TeamRegistrationResult struct {
 	Error             TeamRegistrationError `json:"error,omitempty"`
 }
 
+type TeamUploadPayload struct {
+	Players           []*PlayerPayload       `json:"players,omitempty"`
+	LeaderIndex       *int                   `json:"leaderIndex,omitempty"`
+	AuthorizationCode string                 `json:"authorizationCode"`
+	ExtraInfo         map[string]interface{} `json:"extraInfo,omitempty"`
+}
+
 type TenhouRankingInfo struct {
 	Ranking3 *int `json:"ranking3,omitempty"`
 	Ranking4 *int `json:"ranking4,omitempty"`

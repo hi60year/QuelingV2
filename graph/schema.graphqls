@@ -56,7 +56,10 @@ type Team {
   leaderPlayer: Player
   status: TeamStatus
   contestId: String!
+  contest: Contest!
+  playerOrder: [Int!]
   extraInfo: JSON
+  checkAuthorizationCode(authorizationCode: String!): Boolean!
 }
 
 enum TeamStatus {
@@ -101,6 +104,9 @@ type Query {
   comContestNum: Int!
   riichiContestNum: Int!
 
+  teams(id: ID, contestId: ID, name: String, pageNum: Int!): [Team!]!
+  teamById(id: ID!): Team
+
   allContests(pageNum: Int!): [Contest!]!
   allContestsByRule(rule: MahjongType, pageNum: Int!): [Contest!]!
   allPlayers(pageNum: Int!): [Player!]!
@@ -135,6 +141,13 @@ input TeamRegistrationPayload {
   extraInfo: JSON
 }
 
+input TeamUploadPayload {
+  players: [PlayerPayload]
+  leaderIndex: Int
+  authorizationCode: String!
+  extraInfo: JSON
+}
+
 type TeamNameAlreadyExistError {
   name: String!
   msg: String!
@@ -157,7 +170,9 @@ type TeamRegistrationResult {
   error: TeamRegistrationError
 }
 
+
 type Mutation {
   registerNewTeam(registrationPayload: TeamRegistrationPayload, inviteCode: String): TeamRegistrationResult!
+  updateTeam(teamId: ID!, updatePayload: TeamUploadPayload): Boolean!
 }
 

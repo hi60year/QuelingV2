@@ -84,6 +84,7 @@ type ComplexityRoot struct {
 
 	Mutation struct {
 		RegisterNewTeam func(childComplexity int, registrationPayload *model.TeamRegistrationPayload, inviteCode *string) int
+		UpdateTeam      func(childComplexity int, teamID string, updatePayload *model.TeamUploadPayload) int
 	}
 
 	PlatformInfo struct {
@@ -117,18 +118,23 @@ type ComplexityRoot struct {
 		PlayerByID        func(childComplexity int, id string) int
 		PlayersByName     func(childComplexity int, name string) int
 		RiichiContestNum  func(childComplexity int) int
+		TeamByID          func(childComplexity int, id string) int
+		Teams             func(childComplexity int, id *string, contestID *string, name *string, pageNum int) int
 	}
 
 	Team struct {
-		ContestId    func(childComplexity int) int
-		ExtraInfo    func(childComplexity int) int
-		HasLeader    func(childComplexity int) int
-		ID           func(childComplexity int) int
-		LeaderIndex  func(childComplexity int) int
-		LeaderPlayer func(childComplexity int) int
-		Name         func(childComplexity int) int
-		Players      func(childComplexity int) int
-		Status       func(childComplexity int) int
+		CheckAuthorizationCode func(childComplexity int, authorizationCode string) int
+		Contest                func(childComplexity int) int
+		ContestId              func(childComplexity int) int
+		ExtraInfo              func(childComplexity int) int
+		HasLeader              func(childComplexity int) int
+		ID                     func(childComplexity int) int
+		LeaderIndex            func(childComplexity int) int
+		LeaderPlayer           func(childComplexity int) int
+		Name                   func(childComplexity int) int
+		PlayerOrder            func(childComplexity int) int
+		Players                func(childComplexity int) int
+		Status                 func(childComplexity int) int
 	}
 
 	TeamNameAlreadyExistError struct {
@@ -159,6 +165,7 @@ type ContestResolver interface {
 }
 type MutationResolver interface {
 	RegisterNewTeam(ctx context.Context, registrationPayload *model.TeamRegistrationPayload, inviteCode *string) (*model.TeamRegistrationResult, error)
+	UpdateTeam(ctx context.Context, teamID string, updatePayload *model.TeamUploadPayload) (bool, error)
 }
 type PlayerResolver interface {
 	IsLeader(ctx context.Context, obj *model.Player, teamID string) (bool, error)
@@ -175,6 +182,8 @@ type QueryResolver interface {
 	ContestNum(ctx context.Context) (int, error)
 	ComContestNum(ctx context.Context) (int, error)
 	RiichiContestNum(ctx context.Context) (int, error)
+	Teams(ctx context.Context, id *string, contestID *string, name *string, pageNum int) ([]*model.Team, error)
+	TeamByID(ctx context.Context, id string) (*model.Team, error)
 	AllContests(ctx context.Context, pageNum int) ([]*model.Contest, error)
 	AllContestsByRule(ctx context.Context, rule *model.MahjongType, pageNum int) ([]*model.Contest, error)
 	AllPlayers(ctx context.Context, pageNum int) ([]*model.Player, error)
@@ -183,7 +192,10 @@ type TeamResolver interface {
 	HasLeader(ctx context.Context, obj *model.Team) (bool, error)
 
 	LeaderPlayer(ctx context.Context, obj *model.Team) (*model.Player, error)
-	Status(ctx context.Context, obj *model.Team) (*model.TeamStatus, error)
+
+	Contest(ctx context.Context, obj *model.Team) (*model.Contest, error)
+
+	CheckAuthorizationCode(ctx context.Context, obj *model.Team, authorizationCode string) (bool, error)
 }
 
 type executableSchema struct {
@@ -379,6 +391,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.RegisterNewTeam(childComplexity, args["registrationPayload"].(*model.TeamRegistrationPayload), args["inviteCode"].(*string)), true
+
+	case "Mutation.updateTeam":
+		if e.complexity.Mutation.UpdateTeam == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_updateTeam_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.UpdateTeam(childComplexity, args["teamId"].(string), args["updatePayload"].(*model.TeamUploadPayload)), true
 
 	case "PlatformInfo.name":
 		if e.complexity.PlatformInfo.Name == nil {
@@ -588,6 +612,49 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.RiichiContestNum(childComplexity), true
 
+	case "Query.teamById":
+		if e.complexity.Query.TeamByID == nil {
+			break
+		}
+
+		args, err := ec.field_Query_teamById_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.TeamByID(childComplexity, args["id"].(string)), true
+
+	case "Query.teams":
+		if e.complexity.Query.Teams == nil {
+			break
+		}
+
+		args, err := ec.field_Query_teams_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Teams(childComplexity, args["id"].(*string), args["contestId"].(*string), args["name"].(*string), args["pageNum"].(int)), true
+
+	case "Team.checkAuthorizationCode":
+		if e.complexity.Team.CheckAuthorizationCode == nil {
+			break
+		}
+
+		args, err := ec.field_Team_checkAuthorizationCode_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Team.CheckAuthorizationCode(childComplexity, args["authorizationCode"].(string)), true
+
+	case "Team.contest":
+		if e.complexity.Team.Contest == nil {
+			break
+		}
+
+		return e.complexity.Team.Contest(childComplexity), true
+
 	case "Team.contestId":
 		if e.complexity.Team.ContestId == nil {
 			break
@@ -636,6 +703,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Team.Name(childComplexity), true
+
+	case "Team.playerOrder":
+		if e.complexity.Team.PlayerOrder == nil {
+			break
+		}
+
+		return e.complexity.Team.PlayerOrder(childComplexity), true
 
 	case "Team.players":
 		if e.complexity.Team.Players == nil {
@@ -711,6 +785,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputPlatformInfoPayload,
 		ec.unmarshalInputPlayerPayload,
 		ec.unmarshalInputTeamRegistrationPayload,
+		ec.unmarshalInputTeamUploadPayload,
 	)
 	first := true
 
@@ -874,6 +949,30 @@ func (ec *executionContext) field_Mutation_registerNewTeam_args(ctx context.Cont
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_updateTeam_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["teamId"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("teamId"))
+		arg0, err = ec.unmarshalNID2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["teamId"] = arg0
+	var arg1 *model.TeamUploadPayload
+	if tmp, ok := rawArgs["updatePayload"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("updatePayload"))
+		arg1, err = ec.unmarshalOTeamUploadPayload2ᚖmainᚋgraphᚋmodelᚐTeamUploadPayload(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["updatePayload"] = arg1
+	return args, nil
+}
+
 func (ec *executionContext) field_Player_isLeader_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
@@ -1015,6 +1114,78 @@ func (ec *executionContext) field_Query_playersByName_args(ctx context.Context, 
 		}
 	}
 	args["name"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_teamById_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["id"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+		arg0, err = ec.unmarshalNID2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_teams_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 *string
+	if tmp, ok := rawArgs["id"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+		arg0, err = ec.unmarshalOID2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["id"] = arg0
+	var arg1 *string
+	if tmp, ok := rawArgs["contestId"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("contestId"))
+		arg1, err = ec.unmarshalOID2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["contestId"] = arg1
+	var arg2 *string
+	if tmp, ok := rawArgs["name"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+		arg2, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["name"] = arg2
+	var arg3 int
+	if tmp, ok := rawArgs["pageNum"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("pageNum"))
+		arg3, err = ec.unmarshalNInt2int(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["pageNum"] = arg3
+	return args, nil
+}
+
+func (ec *executionContext) field_Team_checkAuthorizationCode_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["authorizationCode"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("authorizationCode"))
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["authorizationCode"] = arg0
 	return args, nil
 }
 
@@ -1199,8 +1370,14 @@ func (ec *executionContext) fieldContext_Contest_teams(ctx context.Context, fiel
 				return ec.fieldContext_Team_status(ctx, field)
 			case "contestId":
 				return ec.fieldContext_Team_contestId(ctx, field)
+			case "contest":
+				return ec.fieldContext_Team_contest(ctx, field)
+			case "playerOrder":
+				return ec.fieldContext_Team_playerOrder(ctx, field)
 			case "extraInfo":
 				return ec.fieldContext_Team_extraInfo(ctx, field)
+			case "checkAuthorizationCode":
+				return ec.fieldContext_Team_checkAuthorizationCode(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Team", field.Name)
 		},
@@ -2117,6 +2294,61 @@ func (ec *executionContext) fieldContext_Mutation_registerNewTeam(ctx context.Co
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_updateTeam(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_updateTeam(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().UpdateTeam(rctx, fc.Args["teamId"].(string), fc.Args["updatePayload"].(*model.TeamUploadPayload))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_updateTeam(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateTeam_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _PlatformInfo_platform(ctx context.Context, field graphql.CollectedField, obj *model.PlatformInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_PlatformInfo_platform(ctx, field)
 	if err != nil {
@@ -2697,8 +2929,14 @@ func (ec *executionContext) fieldContext_Player_team(ctx context.Context, field 
 				return ec.fieldContext_Team_status(ctx, field)
 			case "contestId":
 				return ec.fieldContext_Team_contestId(ctx, field)
+			case "contest":
+				return ec.fieldContext_Team_contest(ctx, field)
+			case "playerOrder":
+				return ec.fieldContext_Team_playerOrder(ctx, field)
 			case "extraInfo":
 				return ec.fieldContext_Team_extraInfo(ctx, field)
+			case "checkAuthorizationCode":
+				return ec.fieldContext_Team_checkAuthorizationCode(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Team", field.Name)
 		},
@@ -3235,6 +3473,165 @@ func (ec *executionContext) fieldContext_Query_riichiContestNum(ctx context.Cont
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Int does not have child fields")
 		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_teams(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_teams(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Teams(rctx, fc.Args["id"].(*string), fc.Args["contestId"].(*string), fc.Args["name"].(*string), fc.Args["pageNum"].(int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Team)
+	fc.Result = res
+	return ec.marshalNTeam2ᚕᚖmainᚋgraphᚋmodelᚐTeamᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_teams(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Team_id(ctx, field)
+			case "players":
+				return ec.fieldContext_Team_players(ctx, field)
+			case "name":
+				return ec.fieldContext_Team_name(ctx, field)
+			case "hasLeader":
+				return ec.fieldContext_Team_hasLeader(ctx, field)
+			case "leaderIndex":
+				return ec.fieldContext_Team_leaderIndex(ctx, field)
+			case "leaderPlayer":
+				return ec.fieldContext_Team_leaderPlayer(ctx, field)
+			case "status":
+				return ec.fieldContext_Team_status(ctx, field)
+			case "contestId":
+				return ec.fieldContext_Team_contestId(ctx, field)
+			case "contest":
+				return ec.fieldContext_Team_contest(ctx, field)
+			case "playerOrder":
+				return ec.fieldContext_Team_playerOrder(ctx, field)
+			case "extraInfo":
+				return ec.fieldContext_Team_extraInfo(ctx, field)
+			case "checkAuthorizationCode":
+				return ec.fieldContext_Team_checkAuthorizationCode(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Team", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_teams_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_teamById(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_teamById(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().TeamByID(rctx, fc.Args["id"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.Team)
+	fc.Result = res
+	return ec.marshalOTeam2ᚖmainᚋgraphᚋmodelᚐTeam(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_teamById(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Team_id(ctx, field)
+			case "players":
+				return ec.fieldContext_Team_players(ctx, field)
+			case "name":
+				return ec.fieldContext_Team_name(ctx, field)
+			case "hasLeader":
+				return ec.fieldContext_Team_hasLeader(ctx, field)
+			case "leaderIndex":
+				return ec.fieldContext_Team_leaderIndex(ctx, field)
+			case "leaderPlayer":
+				return ec.fieldContext_Team_leaderPlayer(ctx, field)
+			case "status":
+				return ec.fieldContext_Team_status(ctx, field)
+			case "contestId":
+				return ec.fieldContext_Team_contestId(ctx, field)
+			case "contest":
+				return ec.fieldContext_Team_contest(ctx, field)
+			case "playerOrder":
+				return ec.fieldContext_Team_playerOrder(ctx, field)
+			case "extraInfo":
+				return ec.fieldContext_Team_extraInfo(ctx, field)
+			case "checkAuthorizationCode":
+				return ec.fieldContext_Team_checkAuthorizationCode(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Team", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_teamById_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
 	}
 	return fc, nil
 }
@@ -3939,7 +4336,7 @@ func (ec *executionContext) _Team_status(ctx context.Context, field graphql.Coll
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Team().Status(rctx, obj)
+		return obj.Status, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -3948,17 +4345,17 @@ func (ec *executionContext) _Team_status(ctx context.Context, field graphql.Coll
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model.TeamStatus)
+	res := resTmp.(model.TeamStatus)
 	fc.Result = res
-	return ec.marshalOTeamStatus2ᚖmainᚋgraphᚋmodelᚐTeamStatus(ctx, field.Selections, res)
+	return ec.marshalOTeamStatus2mainᚋgraphᚋmodelᚐTeamStatus(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Team_status(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Team",
 		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
+		IsMethod:   false,
+		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type TeamStatus does not have child fields")
 		},
@@ -4010,6 +4407,125 @@ func (ec *executionContext) fieldContext_Team_contestId(ctx context.Context, fie
 	return fc, nil
 }
 
+func (ec *executionContext) _Team_contest(ctx context.Context, field graphql.CollectedField, obj *model.Team) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Team_contest(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Team().Contest(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Contest)
+	fc.Result = res
+	return ec.marshalNContest2ᚖmainᚋgraphᚋmodelᚐContest(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Team_contest(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Team",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Contest_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Contest_name(ctx, field)
+			case "teams":
+				return ec.fieldContext_Contest_teams(ctx, field)
+			case "players":
+				return ec.fieldContext_Contest_players(ctx, field)
+			case "isIndividual":
+				return ec.fieldContext_Contest_isIndividual(ctx, field)
+			case "status":
+				return ec.fieldContext_Contest_status(ctx, field)
+			case "mahjongType":
+				return ec.fieldContext_Contest_mahjongType(ctx, field)
+			case "maxTeamMember":
+				return ec.fieldContext_Contest_maxTeamMember(ctx, field)
+			case "minTeamMember":
+				return ec.fieldContext_Contest_minTeamMember(ctx, field)
+			case "inviteCode":
+				return ec.fieldContext_Contest_inviteCode(ctx, field)
+			case "checkInviteCode":
+				return ec.fieldContext_Contest_checkInviteCode(ctx, field)
+			case "checkTeamNameExist":
+				return ec.fieldContext_Contest_checkTeamNameExist(ctx, field)
+			case "attendNum":
+				return ec.fieldContext_Contest_attendNum(ctx, field)
+			case "homePage":
+				return ec.fieldContext_Contest_homePage(ctx, field)
+			case "platformEngine":
+				return ec.fieldContext_Contest_platformEngine(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Contest_createdAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Contest", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Team_playerOrder(ctx context.Context, field graphql.CollectedField, obj *model.Team) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Team_playerOrder(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.PlayerOrder, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]int)
+	fc.Result = res
+	return ec.marshalOInt2ᚕintᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Team_playerOrder(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Team",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Team_extraInfo(ctx context.Context, field graphql.CollectedField, obj *model.Team) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Team_extraInfo(ctx, field)
 	if err != nil {
@@ -4047,6 +4563,61 @@ func (ec *executionContext) fieldContext_Team_extraInfo(ctx context.Context, fie
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type JSON does not have child fields")
 		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Team_checkAuthorizationCode(ctx context.Context, field graphql.CollectedField, obj *model.Team) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Team_checkAuthorizationCode(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Team().CheckAuthorizationCode(rctx, obj, fc.Args["authorizationCode"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Team_checkAuthorizationCode(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Team",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Team_checkAuthorizationCode_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return
 	}
 	return fc, nil
 }
@@ -6339,6 +6910,62 @@ func (ec *executionContext) unmarshalInputTeamRegistrationPayload(ctx context.Co
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputTeamUploadPayload(ctx context.Context, obj interface{}) (model.TeamUploadPayload, error) {
+	var it model.TeamUploadPayload
+	asMap := map[string]interface{}{}
+	for k, v := range obj.(map[string]interface{}) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"players", "leaderIndex", "authorizationCode", "extraInfo"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "players":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("players"))
+			data, err := ec.unmarshalOPlayerPayload2ᚕᚖmainᚋgraphᚋmodelᚐPlayerPayload(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Players = data
+		case "leaderIndex":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("leaderIndex"))
+			data, err := ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.LeaderIndex = data
+		case "authorizationCode":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("authorizationCode"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.AuthorizationCode = data
+		case "extraInfo":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("extraInfo"))
+			data, err := ec.unmarshalOJSON2map(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ExtraInfo = data
+		}
+	}
+
+	return it, nil
+}
+
 // endregion **************************** input.gotpl *****************************
 
 // region    ************************** interface.gotpl ***************************
@@ -6725,6 +7352,15 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
+		case "updateTeam":
+
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_updateTeam(ctx, field)
+			})
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -7075,6 +7711,49 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Concurrently(i, func() graphql.Marshaler {
 				return rrm(innerCtx)
 			})
+		case "teams":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_teams(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return rrm(innerCtx)
+			})
+		case "teamById":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_teamById(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx, innerFunc)
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return rrm(innerCtx)
+			})
 		case "allContests":
 			field := field
 
@@ -7240,6 +7919,17 @@ func (ec *executionContext) _Team(ctx context.Context, sel ast.SelectionSet, obj
 
 			})
 		case "status":
+
+			out.Values[i] = ec._Team_status(ctx, field, obj)
+
+		case "contestId":
+
+			out.Values[i] = ec._Team_contestId(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
+		case "contest":
 			field := field
 
 			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
@@ -7248,7 +7938,10 @@ func (ec *executionContext) _Team(ctx context.Context, sel ast.SelectionSet, obj
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Team_status(ctx, field, obj)
+				res = ec._Team_contest(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
 				return res
 			}
 
@@ -7256,17 +7949,34 @@ func (ec *executionContext) _Team(ctx context.Context, sel ast.SelectionSet, obj
 				return innerFunc(ctx)
 
 			})
-		case "contestId":
+		case "playerOrder":
 
-			out.Values[i] = ec._Team_contestId(ctx, field, obj)
+			out.Values[i] = ec._Team_playerOrder(ctx, field, obj)
 
-			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&invalids, 1)
-			}
 		case "extraInfo":
 
 			out.Values[i] = ec._Team_extraInfo(ctx, field, obj)
 
+		case "checkAuthorizationCode":
+			field := field
+
+			innerFunc := func(ctx context.Context) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Team_checkAuthorizationCode(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			}
+
+			out.Concurrently(i, func() graphql.Marshaler {
+				return innerFunc(ctx)
+
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -7706,6 +8416,10 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNContest2mainᚋgraphᚋmodelᚐContest(ctx context.Context, sel ast.SelectionSet, v model.Contest) graphql.Marshaler {
+	return ec._Contest(ctx, sel, &v)
 }
 
 func (ec *executionContext) marshalNContest2ᚕᚖmainᚋgraphᚋmodelᚐContestᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Contest) graphql.Marshaler {
@@ -8368,6 +9082,60 @@ func (ec *executionContext) marshalOID2string(ctx context.Context, sel ast.Selec
 	return res
 }
 
+func (ec *executionContext) unmarshalOID2ᚖstring(ctx context.Context, v interface{}) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalID(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOID2ᚖstring(ctx context.Context, sel ast.SelectionSet, v *string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	res := graphql.MarshalID(*v)
+	return res
+}
+
+func (ec *executionContext) unmarshalOInt2ᚕintᚄ(ctx context.Context, v interface{}) ([]int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []interface{}
+	if v != nil {
+		vSlice = graphql.CoerceList(v)
+	}
+	var err error
+	res := make([]int, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNInt2int(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalOInt2ᚕintᚄ(ctx context.Context, sel ast.SelectionSet, v []int) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNInt2int(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v interface{}) (*int, error) {
 	if v == nil {
 		return nil, nil
@@ -8423,6 +9191,34 @@ func (ec *executionContext) marshalOPlayer2ᚖmainᚋgraphᚋmodelᚐPlayer(ctx 
 	return ec._Player(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalOPlayerPayload2ᚕᚖmainᚋgraphᚋmodelᚐPlayerPayload(ctx context.Context, v interface{}) ([]*model.PlayerPayload, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []interface{}
+	if v != nil {
+		vSlice = graphql.CoerceList(v)
+	}
+	var err error
+	res := make([]*model.PlayerPayload, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalOPlayerPayload2ᚖmainᚋgraphᚋmodelᚐPlayerPayload(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalOPlayerPayload2ᚖmainᚋgraphᚋmodelᚐPlayerPayload(ctx context.Context, v interface{}) (*model.PlayerPayload, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputPlayerPayload(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) marshalORankingInfo2mainᚋgraphᚋmodelᚐRankingInfo(ctx context.Context, sel ast.SelectionSet, v model.RankingInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
@@ -8468,20 +9264,22 @@ func (ec *executionContext) unmarshalOTeamRegistrationPayload2ᚖmainᚋgraphᚋ
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) unmarshalOTeamStatus2ᚖmainᚋgraphᚋmodelᚐTeamStatus(ctx context.Context, v interface{}) (*model.TeamStatus, error) {
-	if v == nil {
-		return nil, nil
-	}
-	var res = new(model.TeamStatus)
+func (ec *executionContext) unmarshalOTeamStatus2mainᚋgraphᚋmodelᚐTeamStatus(ctx context.Context, v interface{}) (model.TeamStatus, error) {
+	var res model.TeamStatus
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOTeamStatus2ᚖmainᚋgraphᚋmodelᚐTeamStatus(ctx context.Context, sel ast.SelectionSet, v *model.TeamStatus) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
+func (ec *executionContext) marshalOTeamStatus2mainᚋgraphᚋmodelᚐTeamStatus(ctx context.Context, sel ast.SelectionSet, v model.TeamStatus) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) unmarshalOTeamUploadPayload2ᚖmainᚋgraphᚋmodelᚐTeamUploadPayload(ctx context.Context, v interface{}) (*model.TeamUploadPayload, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputTeamUploadPayload(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalOUpload2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚐUpload(ctx context.Context, v interface{}) (*graphql.Upload, error) {
